@@ -25,7 +25,7 @@ Solana có 3 loại account chính:
 ---
 
 ### Các trường trong account 
-![alt text](image-1.png)
+![alt text](images/image-1.png)
 
 
 
@@ -37,7 +37,7 @@ Solana có 3 loại account chính:
 ### ⚠️ Program không lưu state:
 - Vì bản chất program là **stateless**, nên cần ít nhất **2 account** để lưu và thay đổi state (1 để chứa dữ liệu, 1 để làm authority).
 
-![alt text](image.png)
+![alt text](images/image.png)
 
 VD : 1 counter program cần 2 account (Program Account để lưu bytecode và Data Account để lưu dữ liệu)
 
@@ -61,7 +61,7 @@ VD : 1 counter program cần 2 account (Program Account để lưu bytecode và 
 
 ## 3. Transaction Fees
 
-![alt text](image-2.png)
+![alt text](images/image-2.png)
 
 ### 💰 Base Fee
 - **5000 lamports per signature**
@@ -99,7 +99,7 @@ VD : 1 counter program cần 2 account (Program Account để lưu bytecode và 
   - Làm storage (`Account` định danh)
   - Làm authority có thể **kí giao dịch** thông qua `signer seeds`
 
-![alt text](image-3.png)
+![alt text](images/image-3.png)
 
 ---
 
@@ -110,7 +110,7 @@ VD : 1 counter program cần 2 account (Program Account để lưu bytecode và 
 
 ---
 ### Find PDA example code ts 
-![alt text](image-4.png)
+![alt text](images/image-4.png)
 ---
 
 ## 📚 References
