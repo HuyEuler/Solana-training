@@ -1,83 +1,122 @@
-# **1. Solana architecture**
+# 📘 Lesson 2: Understanding Solana and Anchor Basics
 
-Solana có một mô hình thiết kế khác biệt so với các blockchain truyền thống như Ethereum.
+## 1. Accounts on Solana
 
----
+Solana có 3 loại account chính:
 
-## **1.1 Accounts**
-Trong Solana, **tất cả dữ liệu lưu dưới dạng account**. Không giống Ethereum (phân biệt giữa Externally Owned Account và Smart Contract Account). \
-Mỗi accout trong solana được xác định bởi 32 byte address/ public key.
-![alt text](images/image.png)
+### 📂 Data Accounts
+- Dùng để **lưu trữ dữ liệu** (trạng thái người dùng, điểm số, config,...)
+- Có 2 dạng:
+  - **System-owned**: do `System Program` sở hữu (VD : ví người dùng).
+  - **PDA (Program Derived Address)**: dùng làm storage cho smart contract.
 
-### Account type
-![alt text](images/image2.png)
-- Data 
+### 💻 Program Accounts
+- Lưu trữ **bytecode của chương trình** (smart contract).
+- Được triển khai (deploy) bởi `BPF Loader`.
+- Có thể **cập nhật** nếu còn `upgrade authority`.
 
-    - Là một mảng byte lưu trữ dữ liệu tùy ý.  
-    - Đối với non-executable accounts, dữ liệu này thường chỉ được đọc.  
-    - Đối với executable accounts (smart contract), nó chứa mã thực thi của chương trình.
-
-- executable : A boolean flag that indicates if the account is a program.
-
-- lamports : The account's balance in lamports, the smallest unit of SOL (1 SOL = 1 billion lamports).  
-
-- owner (Chủ sở hữu tài khoản) : The program ID (public key) of the program that owns this account. Only the owner program can modify the account's data or deduct its lamports balance.
-
-- rent_epoch 
-
-### Native Program 
-
-
-### **Các loại account trong Solana**
-- **Executable Accounts**: Chứa **programs** (smart contracts). Một khi đã triển khai, chúng không thể bị sửa đổi.
-- **Data Accounts (Storage Accounts)**: Lưu trữ dữ liệu (giống contract storage trên Ethereum). Mỗi account cần một lượng SOL để duy trì.
-- **System Accounts**: Các account đặc biệt do hệ thống quản lý, như **SYSVAR accounts** để theo dõi trạng thái blockchain.
-
-📌 **Lưu ý quan trọng:**
-- Mỗi account cần một lượng **lamports** (đơn vị của SOL) tối thiểu để tồn tại.
-- Dữ liệu của account bị giới hạn ở **4096 bytes**, nếu lớn hơn thì cần sử dụng **PDA (Program Derived Address)**.
+### 🧩 Native Program Accounts
+- Là **native program** có sẵn trên Solana, ví dụ :
+  - `System Program`: `11111111111111111111111111111111`
+  - `Stake Program`: `Stake11111111111111111111111111111111111111`
+  - `Vote Program`: `Vote111111111111111111111111111111111111111`
+- Là core system → **không thể bị xóa**.
 
 ---
 
-## **1.2 Transactions**
+### Các trường trong account 
+![alt text](image-1.png)
 
-### **Cấu trúc giao dịch**
-Mỗi giao dịch trong Solana bao gồm:
-- **Signers**: Các tài khoản cần ký giao dịch.
-- **Instructions**: Danh sách các hành động cần thực hiện (mỗi instruction là một lời gọi đến một program cụ thể).
-- **Recent Blockhash**: Một hash của block gần nhất để ngăn chặn replay attack.
 
-### **Đặc điểm giao dịch trong Solana**
-✅ **Nhiều instructions trong một giao dịch**: Một transaction có thể chứa nhiều instructions (gọi nhiều smart contracts cùng lúc).
 
-✅ **Parallel Execution (Chạy song song)**: Solana sử dụng **Sealevel** để cho phép các transactions không phụ thuộc chạy song song, giúp tăng throughput.
+### 🔐 Một số quy tắc với account:
+- **Chỉ chủ sở hữu (`owner`)** mới có quyền ghi dữ liệu hoặc rút lamports từ account.
+- **Bất kỳ ai** cũng có thể **gửi SOL vào** account.
+- Một account có thể **chuyển `owner`**.
 
-✅ **Atomic Transactions (Giao dịch nguyên tử)**: Nếu một instruction trong transaction thất bại, toàn bộ transaction sẽ rollback.
+### ⚠️ Program không lưu state:
+- Vì bản chất program là **stateless**, nên cần ít nhất **2 account** để lưu và thay đổi state (1 để chứa dữ liệu, 1 để làm authority).
 
----
+![alt text](image.png)
 
-## **3. Programs (Smart Contract trong Solana)**
-
-Trong Solana, **smart contracts** được gọi là **Programs** và được viết bằng **Rust, C hoặc C++**, thường sử dụng **Anchor framework** để đơn giản hóa quá trình phát triển.
-
-### **Đặc điểm của Programs**
-- **Không có trạng thái (stateless)**: Programs không thể tự lưu trữ dữ liệu bên trong chúng, thay vào đó dữ liệu được lưu trong **Accounts**.
-- **Bất biến (Immutable)**: Một khi đã triển khai, program không thể bị thay đổi (trừ khi có cơ chế upgradable program).
-- **Xử lý bằng BPF (Berkeley Packet Filter)**: Solana sử dụng BPF để thực thi smart contract với hiệu suất cao hơn EVM.
-
-### **Cách hoạt động của Programs**
-1. **Users gửi transactions** chứa instructions.
-2. **Solana VM (Sealevel)** xử lý transactions và gửi instructions đến các programs.
-3. **Programs xử lý logic** và đọc/ghi dữ liệu vào các accounts liên quan.
+VD : 1 counter program cần 2 account (Program Account để lưu bytecode và Data Account để lưu dữ liệu)
 
 ---
 
-## **Tóm tắt kiến trúc Solana**
+## 2. Transactions & Instructions
 
-| Thành phần    | Chức năng |
-|--------------|----------|
-| **Accounts** | Lưu trữ dữ liệu, trạng thái của smart contracts. |
-| **Transactions** | Gửi dữ liệu/instructions đến blockchain, có thể chứa nhiều instructions. |
-| **Programs** | Smart contracts, xử lý logic nhưng không lưu trữ dữ liệu bên trong. |
+- **Transaction** là gói dữ liệu bao gồm một hoặc nhiều **instruction**.
+- Khi một transaction được gửi lên, **Solana Runtime** sẽ xử lý tuần tự từng instruction.
+- Transaction mang tính **atomic** (tất cả thành công hoặc tất cả fail).
+- Kích thước tối đa một transaction là **1232 bytes**.
 
-Bạn đang muốn đào sâu phần nào? 🚀
+### 📦 Một Instruction gồm:
+- `Program ID`: địa chỉ của chương trình xử lý instruction.
+- `Accounts`: danh sách các account được sử dụng.
+- `Data`: dữ liệu đầu vào cho instruction.
+
+🪙 **Ví dụ phổ biến**: Gửi SOL (native transfer) là một instruction.
+
+---
+
+## 3. Transaction Fees
+
+![alt text](image-2.png)
+
+### 💰 Base Fee
+- **5000 lamports per signature**
+- Được trả bởi người đầu tiên ký (fee payer)
+- **50% bị đốt**, **50% trả cho validator**
+
+### 🚀 Prioritization Fee (optional)
+- Gợi ý ưu tiên xử lý giao dịch.
+- Theo **SIMD-0096**: 100% fee này được trả cho validator xử lý transaction.
+
+---
+
+## 4. Programs
+
+### 💡 Key facts:
+- Trên Solana, **smart contract** được gọi là **program**.
+- User tương tác với programs bằng cách gửi các transaction chứa instruction chỉ ra programs phải làm gì. 
+- Program là account có flag `executable = true`.
+- Chạy bởi `BPF Loader` → tương thích BPF bytecode.
+- **Mutable by default 😱**, trừ khi set owner về `0x00`.
+
+### 🛠 Viết program:
+- **Rust Native**
+- **Anchor Framework** (được khuyên dùng)
+- Có thể dùng C++ nhưng không phổ biến
+
+---
+
+## 5. PDA (Program Derived Address)
+
+### ✨ PDA là gì?
+- Là **địa chỉ on-chain được tính toán xác định** bằng seed + bump + Program ID.
+- Không nằm trên curve Ed25519 → **không có private key**.
+- Dùng để:
+  - Làm storage (`Account` định danh)
+  - Làm authority có thể **kí giao dịch** thông qua `signer seeds`
+
+![alt text](image-3.png)
+
+---
+
+### 🔧 Key Point về PDA:
+- PDA chỉ là public key, không tự động tạo ra tài khoản on-chain khi tính toán.
+- Tài khoản sử dụng PDA làm địa chỉ phải được tạo rõ ràng thông qua một instruction chuyên biệt trong chương trình Solana.
+- Dùng trong `#[account(seeds = [...], bump)]` để xác thực PDA đúng.
+
+---
+### Find PDA example code ts 
+![alt text](image-4.png)
+---
+
+## 📚 References
+
+- [Solana Docs PDA](https://solana.com/vi/developers/courses/program-security/account-data-matching)
+- [QuickNode](https://www.quicknode.com/guides/solana-development/anchor/system-program-pda)
+- [Solana Cookbook](https://solanacookbook.com/)
+
+---
