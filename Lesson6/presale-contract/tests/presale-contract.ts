@@ -20,7 +20,7 @@ describe("presale-contract", () => {
 
   const program = anchor.workspace.PresaleContract as Program<PresaleContract>;
   const authority = loadLocalSigner('id.json');
-  const mint = new web3.PublicKey("8dh63X7teT3h1SLyTSwchfYRRWncer18mFe1X23RsbSr")
+  const mint = new web3.PublicKey("Di2VkF6679HfuS8HjgpMESjoQpHY7f4zM7ELiAMsDTP6")
   
   let authorityAta: PublicKey;
   let user: Keypair;
@@ -54,12 +54,15 @@ describe("presale-contract", () => {
     
 
     const [presalePDA, bump] = PublicKey.findProgramAddressSync(
-      [Buffer.from("presale-event"), authority.publicKey.toBuffer(), mint.toBuffer()],
+      [Buffer.from("presale-event"), mint.toBuffer()],
       program.programId
     );
     presaleContract = presalePDA;
     vaultSignerBump = bump;
     vaultSigner = presaleContract; // vault PDA signer is vaultState
+ 
+    console.log("Presale PDA :" + presaleContract);
+    
 
     let vaultAtaAccount = await getOrCreateAssociatedTokenAccount(
       provider.connection,
@@ -130,13 +133,19 @@ describe("presale-contract", () => {
     const amountToBuy = new BN(10); // 10 token
     const pricePerToken = new BN(0.1 * LAMPORTS_PER_SOL); // = 0.1 SOL
     const totalPrice = amountToBuy.mul(pricePerToken); // 50 * 0.1 SOL
-  
+
+    console.log("user" + user);
+    console.log("presale event PDA " + presaleContract);
+    console.log("user purchase PDA " + userPurchase);
+
+    const presale_contract_data = await program.account.presaleEvent.fetch(presaleContract);
+    console.log("Total token : " + presale_contract_data.totalTokens);
+    
     await program.methods
       .purchaseTokenBySol(amountToBuy)
       .accounts({
         presaleEvent: presaleContract,
         userPurchase: userPurchase,
-        vaultReceiveSol: presaleContract,
         user: user.publicKey,
         systemProgram: SystemProgram.programId,
       })
@@ -144,7 +153,7 @@ describe("presale-contract", () => {
       .rpc();
   
     const user_purchase_data = await program.account.userPurchase.fetch(userPurchase);
-    console.log("✅ unclaimed amount" + user_purchase_data.unclaimedTokens);
+    console.log("✅ Claimed amount : {}", user_purchase_data.claimedTokens);
   });
   
 
@@ -165,7 +174,7 @@ describe("presale-contract", () => {
 
 
     const user_purchase_data = await program.account.userPurchase.fetch(userPurchase);
-    console.log("❌ unclaimed amount" + user_purchase_data.unclaimedTokens);
+    console.log("❌ unclaimed amount" + user_purchase_data.totalPurchasedToken);
     console.log("✅ claimed amount" + user_purchase_data.claimedTokens);
   });
 

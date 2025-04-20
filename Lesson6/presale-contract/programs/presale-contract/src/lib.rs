@@ -1,13 +1,17 @@
 use anchor_lang::prelude::*;
+pub mod utils;
+use crate::utils::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use anchor_lang::solana_program::{program::invoke, system_instruction};
-declare_id!("4y8CAp8VcP7CEWS4NYgMeY5QXRgdMKgGzBSnEwGNtkqB");
+declare_id!("EPEmHGeMkPVUput3iXBcVWuicgrNm3yQnTP4H5j8ioR7");
 
 // const PUBLISH_TOKEN_MINT : Pubkey = pubkey!("8dh63X7teT3h1SLyTSwchfYRRWncer18mFe1X23RsbSr");
-
+const VESTING_DURATION : u64 = 60 * 24 * 3600; // 2 month
 #[program]
 pub mod presale_contract {
     use std::u64;
+
+    use solana_program::native_token::LAMPORTS_PER_SOL;
 
     use super::*;
 
@@ -36,24 +40,38 @@ pub mod presale_contract {
 
         presale_event.total_tokens += amount;
 
-        let cpi_accounts = Transfer {
-            from: authority_ata.to_account_info(),
-            to: vault_ata.to_account_info(),
-            authority: authority.to_account_info(),
-        };
-        let cpi_program = token_program.to_account_info();
-        token::transfer(CpiContext::new(cpi_program, cpi_accounts), amount)?;
+        // Transfer token to vault
+
+        // let cpi_accounts = Transfer {
+        //     from: authority_ata.to_account_info(),
+        //     to: vault_ata.to_account_info(),
+        //     authority: authority.to_account_info(),
+        // };
+        // let cpi_program = token_program.to_account_info();
+        // token::transfer(CpiContext::new(cpi_program, cpi_accounts), amount)?;
+
+        token_transfer_user(authority_ata.to_account_info(), authority, vault_ata.to_account_info(), token_program, amount)?;
+
         Ok(())
     }
 
     pub fn withdraw_sol_from_vault(ctx: Context<WithdrawSol>) -> Result<()>{
-        let vault = &mut ctx.accounts.vault;
+        let presale_event = &mut ctx.accounts.presale_event;
         let authority = &mut ctx.accounts.authority;
-        let amount = vault.lamports();
+        // let amount = presale_event.lamports();
         // let amount = 1
 
-        **vault.to_account_info().lamports.borrow_mut() -= amount;
-        **authority.to_account_info().lamports.borrow_mut() += amount;
+        // Withdraw SOL from vault
+        // **vault.to_account_info().lamports.borrow_mut() -= amount;
+        // **authority.to_account_info().lamports.borrow_mut() += amount;
+        
+        let seeds = &[
+            b"presale-event",
+            presale_event.token_mint.as_ref(),
+            &[presale_event.bump],
+        ];
+        sol_transfer_from_pda(presale_event.to_account_info(), authority.to_account_info(), authority.to_account_info(), &[seeds], 1*LAMPORTS_PER_SOL/2)?;
+
         Ok(())
     }
 
@@ -61,34 +79,37 @@ pub mod presale_contract {
         let presale_event = &mut ctx.accounts.presale_event;
         let user = &mut ctx.accounts.user;
         let user_purchase = &mut ctx.accounts.user_purchase;
-        let vault = &mut ctx.accounts.vault_receive_sol;
+        // let vault = &mut ctx.accounts.presale_event;
 
         let _current = Clock::get()?.unix_timestamp as u64;
         require!(_current >= presale_event.start_presale && _current <= presale_event.end_presale, CustomError::InvaliTimePurchase);
         require!(amount_bought <= presale_event.total_tokens, CustomError::InsufficientToken);
 
         user_purchase.user = user.key();
-        user_purchase.unclaimed_tokens += amount_bought;
+        user_purchase.total_purchased_token += amount_bought;
 
         presale_event.total_tokens -= amount_bought;
         
         let amount_sol = (amount_bought as f64 * presale_event.price_sol_per_token) as u64;
 
         // Transfer SOL to vault 
-        let ix = system_instruction::transfer(
-            &user.key(),
-            &vault.to_account_info().key(),
-            amount_sol,
-        );
+
+        // let ix = system_instruction::transfer(
+        //     &user.key(),
+        //     &presale_event.to_account_info().key(),
+        //     amount_sol,
+        // );
     
-        invoke(
-            &ix,
-            &[
-                user.to_account_info(),
-                vault.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-        )?;
+        // invoke(
+        //     &ix,
+        //     &[
+        //         user.to_account_info(),
+        //         presale_event.to_account_info(),
+        //         ctx.accounts.system_program.to_account_info(),
+        //     ],
+        // )?;
+
+        sol_transfer_from_user(user, presale_event.to_account_info(), &ctx.accounts.system_program, amount_sol)?;
 
         Ok(())
     }
@@ -100,39 +121,46 @@ pub mod presale_contract {
         let vault_ata = &mut ctx.accounts.vault_ata;
         let user_ata = &mut ctx.accounts.user_ata;
         let token_program = &ctx.accounts.token_program;
-
+        
         let _current = Clock::get()?.unix_timestamp as u64;
         
         // Claim token 
         require!(_current >= presale_event.tge_ts, CustomError::InvalidTimeClaimToken);
         let passtime_from_tge = _current - presale_event.tge_ts;
-        let vesting_duration : u64 = 60 * 24 * 3600; // 2 month
 
-        let total_token = user_purchase.claimed_tokens + user_purchase.unclaimed_tokens;
+        let total_token = user_purchase.total_purchased_token;
 
         let half = total_token  * presale_event.tge_released_amount as u64; 
         let mut vested = 0;
-        if passtime_from_tge >= vesting_duration {
+        if passtime_from_tge >= VESTING_DURATION {
             vested = half;
         }else{
-            vested = half * passtime_from_tge / vesting_duration;
+            vested = half * passtime_from_tge / VESTING_DURATION;
         }
         let amount_to_claim = (half + vested).saturating_sub(user_purchase.claimed_tokens);
         user_purchase.claimed_tokens = half + vested;
-        user_purchase.unclaimed_tokens =  user_purchase.unclaimed_tokens.saturating_sub(amount_to_claim);
+        
+        // Transfer token mint from vault to user 
+        let seeds = &[
+            b"presale-event",
+            presale_event.token_mint.as_ref(),
+            &[presale_event.bump],
+        ];
 
-        let cpi_accounts = Transfer {
-            from: vault_ata.to_account_info(),
-            to: user_ata.to_account_info(),
-            authority: presale_event.to_account_info(),
-        };
-        let cpi_program = token_program.to_account_info();
+        
+        // let cpi_accounts = Transfer {
+        //     from: vault_ata.to_account_info(),
+        //     to: user_ata.to_account_info(),
+        //     authority: presale_event.to_account_info(),
+        // };
+        // let cpi_program = token_program.to_account_info();
 
-        let seeds = &[b"vault", presale_event.authority.as_ref(), &[presale_event.bump]];
-        token::transfer(
-            CpiContext::new_with_signer(cpi_program, cpi_accounts, &[seeds]),
-            amount_to_claim,
-        )?;
+        // token::transfer(
+        //     CpiContext::new_with_signer(cpi_program, cpi_accounts, &[seeds]),
+        //     amount_to_claim,
+        // )?;
+
+        token_transfer_with_signer(vault_ata.to_account_info(), presale_event.to_account_info(), user_ata.to_account_info(), token_program, &[seeds], amount_to_claim)?;
 
         Ok(())
     }
@@ -144,7 +172,7 @@ pub struct SetupPresale<'info> {
     #[account(
         init_if_needed,  // Chỗ này để if_need để tiện test, chuẩn thì phải để init 
         payer = signer,
-        seeds = [b"presale-event", signer.key().as_ref(), token_mint.key().as_ref()],
+        seeds = [b"presale-event", token_mint.key().as_ref()],
         bump,
         space = 8 + std::mem::size_of::<PresaleEvent>(),
     )]
@@ -159,7 +187,7 @@ pub struct SetupPresale<'info> {
 pub struct ProvideTokenToVault<'info> {
     #[account(
         mut, 
-        seeds = [b"presale-event", authority.key().as_ref(), presale_event.token_mint.as_ref()], 
+        seeds = [b"presale-event", presale_event.token_mint.as_ref()], 
         bump,
     )]
     pub presale_event : Account<'info, PresaleEvent>,
@@ -183,9 +211,12 @@ pub struct ProvideTokenToVault<'info> {
 
 #[derive(Accounts)]
 pub struct WithdrawSol<'info> {
-    /// CHECK
-    #[account(mut)]
-    pub vault : AccountInfo<'info>,
+    #[account(
+        mut, 
+        seeds = [b"presale-event", presale_event.token_mint.as_ref()], 
+        bump,
+    )]
+    pub presale_event : Account<'info, PresaleEvent>,
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -194,7 +225,8 @@ pub struct WithdrawSol<'info> {
 #[derive(Accounts)]
 pub struct PurchaseTokenBySol<'info> {
     #[account(
-        seeds = [b"presale-event", presale_event.authority.key().as_ref(), presale_event.token_mint.as_ref()],
+        mut, 
+        seeds = [b"presale-event", presale_event.token_mint.as_ref()],
         bump,
     )]
     pub presale_event : Account<'info, PresaleEvent>,
@@ -206,9 +238,6 @@ pub struct PurchaseTokenBySol<'info> {
         space = 8 + std::mem::size_of::<UserPurchase>() + 32,
     )]
     pub user_purchase : Account<'info, UserPurchase>,
-    /// CHECK 
-    #[account(mut)]
-    pub vault_receive_sol : AccountInfo<'info>,
     #[account(mut)]
     pub user : Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -217,11 +246,13 @@ pub struct PurchaseTokenBySol<'info> {
 #[derive(Accounts)]
 pub struct ClaimToken<'info> {
     #[account(
-        seeds = [b"presale-event", presale_event.authority.key().as_ref(), presale_event.token_mint.as_ref()],
+        mut,
+        seeds = [b"presale-event", presale_event.token_mint.as_ref()],
         bump,
     )]
     pub presale_event : Account<'info, PresaleEvent>,
     #[account(
+        mut, 
         seeds = [b"user-purchase", user.key().as_ref(), presale_event.token_mint.as_ref()],
         bump,
     )]
@@ -267,7 +298,7 @@ pub enum TokenType {
 #[account]
 pub struct UserPurchase {
     pub user: Pubkey,
-    pub unclaimed_tokens: u64, // Số lượng token còn trong vault
+    pub total_purchased_token: u64, // Tổng số token đã mua 
     pub claimed_tokens: u64, // Số lượng đã claim 
 }
 
