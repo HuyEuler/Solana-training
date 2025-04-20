@@ -64,6 +64,10 @@ Huỷ đăng ký và xoá chương trình khỏi mạng (chỉ khi bạn là ng�
 
 ---
 
+`anchor keys list`
+
+Hiển thị program Id
+
 ### 📁 Solana Keypair & Wallet
 
 `ls ~/.config/solana`
